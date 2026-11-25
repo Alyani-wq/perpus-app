@@ -14,6 +14,7 @@ class Loan extends Model
         'member_id',
         'tanggal_pinjam',
         'tanggal_kembali_rencana',
+        'status'
     ];
 
     public function book()

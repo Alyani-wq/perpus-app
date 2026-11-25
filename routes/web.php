@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\BookController;
 use App\Http\Controllers\MemberController;
+use App\Http\Controllers\LoanController; 
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -58,6 +59,7 @@ Route::middleware('auth')->group(function () {
 
     // CRUD Anggota
     Route::resource('members', MemberController::class);
+    Route::resource('loans', LoanController::class)->only(['index', 'create', 'store']); 
 });
 
 // Autentikasi

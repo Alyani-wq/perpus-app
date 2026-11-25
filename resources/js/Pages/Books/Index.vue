@@ -21,7 +21,7 @@ const daftarBuku = computed(() => {
     return hasilCari.value ?? props.books.data
 })
 
-// Mengirim permintaan pencarian ke server
+// Mengambil hasil pencarian dari server
 async function ambilHasil() {
     if (permintaan) {
         permintaan.abort()
@@ -64,7 +64,7 @@ async function ambilHasil() {
     }
 }
 
-// Debounce 800 milidetik
+// Pencarian otomatis dengan debounce 800 milidetik
 watch(keyword, (nilai) => {
     clearTimeout(timer)
 
@@ -81,12 +81,12 @@ watch(keyword, (nilai) => {
         return
     }
 
-    // Permintaan baru dikirim setelah pengguna berhenti mengetik 800 ms.
     timer = setTimeout(() => {
         ambilHasil()
     }, 800)
 })
 
+// Menghapus buku
 function hapus(id) {
     if (confirm('Yakin ingin menghapus buku ini?')) {
         router.delete(route('books.destroy', id), {
@@ -99,6 +99,7 @@ function hapus(id) {
     }
 }
 
+// Membersihkan timer dan permintaan saat halaman ditutup
 onBeforeUnmount(() => {
     clearTimeout(timer)
 
@@ -113,6 +114,7 @@ onBeforeUnmount(() => {
         <div class="p-4">
             <h1 class="text-xl font-bold">Data Buku</h1>
 
+            <!-- Pesan sukses -->
             <div
                 v-if="$page.props.flash?.success"
                 class="my-3 text-green-700"
@@ -120,6 +122,7 @@ onBeforeUnmount(() => {
                 {{ $page.props.flash.success }}
             </div>
 
+            <!-- Tombol tambah dan pencarian -->
             <div class="my-4 flex flex-wrap items-center gap-3">
                 <Link
                     :href="route('books.create')"
@@ -135,15 +138,23 @@ onBeforeUnmount(() => {
                     class="min-w-64 rounded border px-3 py-2"
                 >
 
-                <span v-if="sedangMencari" class="text-gray-500">
+                <span
+                    v-if="sedangMencari"
+                    class="text-gray-500"
+                >
                     Mencari...
                 </span>
             </div>
 
-            <p v-if="pesanError" class="mb-3 text-red-600">
+            <!-- Pesan error -->
+            <p
+                v-if="pesanError"
+                class="mb-3 text-red-600"
+            >
                 {{ pesanError }}
             </p>
 
+            <!-- Tabel buku -->
             <div class="overflow-x-auto">
                 <table class="w-full border-collapse border">
                     <thead>
@@ -202,6 +213,7 @@ onBeforeUnmount(() => {
                             </td>
                         </tr>
 
+                        <!-- Jika data kosong -->
                         <tr v-if="daftarBuku.length === 0">
                             <td
                                 colspan="6"
@@ -214,7 +226,7 @@ onBeforeUnmount(() => {
                 </table>
             </div>
 
-            <!-- Pagination ditampilkan saat menggunakan daftar bawaan -->
+            <!-- Pagination daftar buku awal -->
             <div
                 v-if="hasilCari === null"
                 class="mt-4 flex flex-wrap gap-2"
