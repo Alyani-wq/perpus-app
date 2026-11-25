@@ -5,6 +5,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\BookController;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\LoanController; 
+use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -18,9 +19,9 @@ Route::get('/tentang', [HomeController::class, 'tentang']);
 Route::get('/kontak', [HomeController::class, 'kontak']);
 
 // Dashboard
-Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index']) 
+->middleware(['auth', 'verified']) 
+->name('dashboard'); 
 
 // Profil pengguna
 Route::middleware('auth')->group(function () {
@@ -60,6 +61,7 @@ Route::middleware('auth')->group(function () {
     // CRUD Anggota
     Route::resource('members', MemberController::class);
     Route::resource('loans', LoanController::class)->only(['index', 'create', 'store']); 
+    Route::patch('loans/{loan}/kembalikan', [LoanController::class, 'kembalikan']) ->name('loans.kembalikan');
 });
 
 // Autentikasi

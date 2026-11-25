@@ -81,7 +81,7 @@ class LoanController extends Controller
                 ]);
             }
 
-            // Tanggal jatuh tempo adalah 14 hari setelah tanggal pinjam
+            // Menyimpan data peminjaman
             Loan::create([
                 'member_id' => $validated['member_id'],
                 'book_id' => $validated['book_id'],
@@ -90,7 +90,7 @@ class LoanController extends Controller
                 'status' => 'dipinjam',
             ]);
 
-            // Mengurangi stok buku setelah peminjaman disimpan
+            // Mengurangi stok buku
             $book->decrement('stok');
         });
 
@@ -100,5 +100,45 @@ class LoanController extends Controller
                 'success',
                 'Peminjaman berhasil disimpan. Jatuh tempo 14 hari setelah tanggal pinjam.'
             );
+    }
+
+    /**
+     * Memproses pengembalian buku dan menghitung denda.
+     */
+    public function kembalikan(Loan $loan)
+    {
+        // Menolak jika buku sudah dikembalikan
+        if ($loan->status === 'dikembalikan') {
+            return back()->withErrors([
+                'loan' => 'Buku ini sudah dikembalikan sebelumnya.',
+            ]);
+        }
+
+        // Menghitung keterlambatan dan denda
+        $hariTerlambat = $loan->hari_terlambat;
+        $denda = $loan->perkiraan_denda;
+
+        // Memperbarui peminjaman dan stok buku
+        DB::transaction(function () use ($loan, $denda) {
+
+            $loan->update([
+                'status' => 'dikembalikan',
+                'tanggal_kembali' => today()->toDateString(),
+                'denda' => $denda,
+            ]);
+
+            // Menambah stok buku sebanyak 1
+            $loan->book->increment('stok');
+        });
+
+        // Menyusun pesan sukses
+        $pesan = 'Buku berhasil dikembalikan. Stok buku bertambah 1.';
+
+        if ($denda > 0) {
+            $pesan .= ' Terlambat ' . $hariTerlambat . ' Hari, denda Rp'
+                . number_format($denda, 0, ',', '.') . '.';
+        }
+
+        return back()->with('success', $pesan);
     }
 }
