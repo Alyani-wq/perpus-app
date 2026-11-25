@@ -1,8 +1,9 @@
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { useForm, Link } from '@inertiajs/vue3';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import { useForm } from '@inertiajs/vue3'
+import { ref, watch, onBeforeUnmount } from 'vue'
+import axios from 'axios'
 
-// Membuat form tambah buku
 const form = useForm({
     kode_buku: '',
     judul: '',
@@ -10,120 +11,234 @@ const form = useForm({
     penerbit: '',
     tahun: '',
     stok: 0,
-});
+})
 
-// Mengirim data ke BookController@store
+const statusKode = ref('')
+let timerKode = null
+let permintaanKode = null
+
+async function periksaKode() {
+    if (permintaanKode) {
+        permintaanKode.abort()
+    }
+
+    const controller = new AbortController()
+    permintaanKode = controller
+    const kodeYangDiperiksa = form.kode_buku.trim()
+
+    statusKode.value = 'memeriksa'
+
+    try {
+        const respons = await axios.get(route('books.cek-kode'), {
+            params: {
+                kode_buku: kodeYangDiperiksa,
+            },
+            signal: controller.signal,
+        })
+
+        if (permintaanKode !== controller) return
+        if (form.kode_buku.trim() !== kodeYangDiperiksa) return
+
+        statusKode.value = respons.data.tersedia
+            ? 'tersedia'
+            : 'terpakai'
+    } catch (error) {
+        if (
+            error.code === 'ERR_CANCELED' ||
+            axios.isCancel(error)
+        ) {
+            return
+        }
+
+        if (permintaanKode === controller) {
+            statusKode.value = 'gagal'
+        }
+    } finally {
+        if (permintaanKode === controller) {
+            permintaanKode = null
+        }
+    }
+}
+
+// Memeriksa kode 500 ms setelah pengguna berhenti mengetik
+watch(
+    () => form.kode_buku,
+    (nilai) => {
+        clearTimeout(timerKode)
+
+        if (permintaanKode) {
+            permintaanKode.abort()
+            permintaanKode = null
+        }
+
+        if (!nilai || nilai.trim() === '') {
+            statusKode.value = ''
+            return
+        }
+
+        statusKode.value = ''
+
+        timerKode = setTimeout(() => {
+            periksaKode()
+        }, 500)
+    }
+)
+
+onBeforeUnmount(() => {
+    clearTimeout(timerKode)
+
+    if (permintaanKode) {
+        permintaanKode.abort()
+    }
+})
+
 function submit() {
-    form.post(route('books.store'));
+    // Validasi unique di BookController@store tetap wajib.
+    form.post(route('books.store'))
 }
 </script>
 
 <template>
     <AuthenticatedLayout>
-        <div class="p-6">
-            <h1 class="text-2xl font-bold mb-6">Tambah Buku</h1>
+        <div class="p-4">
+            <h1 class="text-xl font-bold">Tambah Buku</h1>
 
             <form
                 @submit.prevent="submit"
-                class="max-w-lg space-y-4"
+                class="mt-5 max-w-xl space-y-4"
             >
-                <!-- Kode Buku -->
                 <div>
-                    <label class="block mb-1">Kode Buku</label>
+                    <label class="mb-1 block font-medium">
+                        Kode Buku
+                    </label>
+
                     <input
                         v-model="form.kode_buku"
                         type="text"
-                        class="w-full border rounded p-2"
+                        required
                         placeholder="Masukkan kode buku"
-                    />
-                    <div v-if="form.errors.kode_buku" class="text-red-500 text-sm">
+                        class="w-full rounded border px-3 py-2"
+                    >
+
+                    <p
+                        v-if="statusKode === 'memeriksa'"
+                        class="mt-1 text-sm text-gray-500"
+                    >
+                        Memeriksa kode buku...
+                    </p>
+
+                    <p
+                        v-else-if="statusKode === 'tersedia'"
+                        class="mt-1 text-sm text-green-700"
+                    >
+                        Kode buku tersedia.
+                    </p>
+
+                    <p
+                        v-else-if="statusKode === 'terpakai'"
+                        class="mt-1 text-sm text-red-600"
+                    >
+                        Kode buku sudah terdaftar. Gunakan kode lain.
+                    </p>
+
+                    <p
+                        v-else-if="statusKode === 'gagal'"
+                        class="mt-1 text-sm text-yellow-700"
+                    >
+                        Pemeriksaan gagal. Server tetap memvalidasi
+                        kode saat data disimpan.
+                    </p>
+
+                    <p
+                        v-if="form.errors.kode_buku"
+                        class="mt-1 text-sm text-red-600"
+                    >
                         {{ form.errors.kode_buku }}
-                    </div>
+                    </p>
                 </div>
 
-                <!-- Judul -->
                 <div>
-                    <label class="block mb-1">Judul Buku</label>
+                    <label class="mb-1 block font-medium">Judul</label>
                     <input
                         v-model="form.judul"
                         type="text"
-                        class="w-full border rounded p-2"
-                        placeholder="Masukkan judul buku"
-                    />
-                    <div v-if="form.errors.judul" class="text-red-500 text-sm">
+                        required
+                        class="w-full rounded border px-3 py-2"
+                    >
+                    <p v-if="form.errors.judul" class="text-sm text-red-600">
                         {{ form.errors.judul }}
-                    </div>
+                    </p>
                 </div>
 
-                <!-- Pengarang -->
                 <div>
-                    <label class="block mb-1">Pengarang</label>
+                    <label class="mb-1 block font-medium">Pengarang</label>
                     <input
                         v-model="form.pengarang"
                         type="text"
-                        class="w-full border rounded p-2"
-                        placeholder="Masukkan nama pengarang"
-                    />
-                    <div v-if="form.errors.pengarang" class="text-red-500 text-sm">
+                        required
+                        class="w-full rounded border px-3 py-2"
+                    >
+                    <p v-if="form.errors.pengarang" class="text-sm text-red-600">
                         {{ form.errors.pengarang }}
-                    </div>
+                    </p>
                 </div>
 
-                <!-- Penerbit -->
                 <div>
-                    <label class="block mb-1">Penerbit</label>
+                    <label class="mb-1 block font-medium">Penerbit</label>
                     <input
                         v-model="form.penerbit"
                         type="text"
-                        class="w-full border rounded p-2"
-                        placeholder="Masukkan nama penerbit"
-                    />
-                    <div v-if="form.errors.penerbit" class="text-red-500 text-sm">
+                        class="w-full rounded border px-3 py-2"
+                    >
+                    <p v-if="form.errors.penerbit" class="text-sm text-red-600">
                         {{ form.errors.penerbit }}
-                    </div>
+                    </p>
                 </div>
 
-                <!-- Tahun -->
                 <div>
-                    <label class="block mb-1">Tahun Terbit</label>
+                    <label class="mb-1 block font-medium">Tahun Terbit</label>
                     <input
                         v-model="form.tahun"
                         type="number"
-                        class="w-full border rounded p-2"
-                        placeholder="Contoh: 2025"
-                    />
-                    <div v-if="form.errors.tahun" class="text-red-500 text-sm">
+                        min="1000"
+                        max="9999"
+                        class="w-full rounded border px-3 py-2"
+                    >
+                    <p v-if="form.errors.tahun" class="text-sm text-red-600">
                         {{ form.errors.tahun }}
-                    </div>
+                    </p>
                 </div>
 
-                <!-- Stok -->
                 <div>
-                    <label class="block mb-1">Stok Buku</label>
+                    <label class="mb-1 block font-medium">Stok</label>
                     <input
-                        v-model="form.stok"
+                        v-model.number="form.stok"
                         type="number"
                         min="0"
-                        class="w-full border rounded p-2"
-                    />
-                    <div v-if="form.errors.stok" class="text-red-500 text-sm">
+                        required
+                        class="w-full rounded border px-3 py-2"
+                    >
+                    <p v-if="form.errors.stok" class="text-sm text-red-600">
                         {{ form.errors.stok }}
-                    </div>
+                    </p>
                 </div>
 
-                <!-- Tombol -->
                 <div class="flex gap-3">
                     <button
                         type="submit"
-                        :disabled="form.processing"
-                        class="bg-blue-600 text-white px-4 py-2 rounded"
+                        :disabled="
+                            form.processing ||
+                            statusKode === 'terpakai' ||
+                            statusKode === 'memeriksa'
+                        "
+                        class="rounded bg-blue-600 px-5 py-2 text-white disabled:opacity-50"
                     >
-                        {{ form.processing ? 'Menyimpan...' : 'Simpan Buku' }}
+                        {{ form.processing ? 'Menyimpan...' : 'Simpan' }}
                     </button>
 
                     <Link
-                        href="/books"
-                        class="bg-gray-500 text-white px-4 py-2 rounded"
+                        :href="route('books.index')"
+                        class="rounded border px-5 py-2"
                     >
                         Kembali
                     </Link>

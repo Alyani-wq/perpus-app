@@ -1,11 +1,15 @@
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { useForm, Link } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import { useForm } from '@inertiajs/vue3'
+import { ref, watch, onBeforeUnmount } from 'vue'
+import axios from 'axios'
 
 const props = defineProps({
-    member: Object,
-});
+    member: {
+        type: Object,
+        required: true,
+    },
+})
 
 const form = useForm({
     _method: 'put',
@@ -13,171 +17,327 @@ const form = useForm({
     nis_nim: props.member.nis_nim ?? '',
     no_hp: props.member.no_hp ?? '',
     foto: null,
-});
+})
 
-const pratinjau = ref(null);
+const pratinjau = ref(null)
+const statusNis = ref('')
 
+let timerNis = null
+let permintaanNis = null
+let alamatPratinjau = null
+
+// Memilih foto baru dan membuat pratinjau
 function pilihFoto(event) {
-    const berkas = event.target.files[0];
+    const berkas = event.target.files[0]
 
-    form.foto = berkas ?? null;
-
-    if (pratinjau.value) {
-        URL.revokeObjectURL(pratinjau.value);
+    if (alamatPratinjau) {
+        URL.revokeObjectURL(alamatPratinjau)
+        alamatPratinjau = null
     }
 
-    pratinjau.value = berkas
-        ? URL.createObjectURL(berkas)
-        : null;
+    form.foto = berkas ?? null
+
+    if (berkas) {
+        alamatPratinjau = URL.createObjectURL(berkas)
+        pratinjau.value = alamatPratinjau
+    } else {
+        pratinjau.value = null
+    }
 }
 
+// Memeriksa NIS/NIM melalui server
+async function periksaNis() {
+    if (permintaanNis) {
+        permintaanNis.abort()
+    }
+
+    const controller = new AbortController()
+    permintaanNis = controller
+    const nisYangDiperiksa = form.nis_nim.trim()
+
+    statusNis.value = 'memeriksa'
+
+    try {
+        const respons = await axios.get(route('members.cek-nis'), {
+            params: {
+                nis_nim: nisYangDiperiksa,
+                abaikan: props.member.id,
+            },
+            signal: controller.signal,
+        })
+
+        // Abaikan respons dari permintaan yang sudah tidak berlaku
+        if (permintaanNis !== controller) return
+        if (form.nis_nim.trim() !== nisYangDiperiksa) return
+
+        statusNis.value = respons.data.tersedia
+            ? 'tersedia'
+            : 'terpakai'
+    } catch (error) {
+        if (
+            error.code === 'ERR_CANCELED' ||
+            axios.isCancel(error)
+        ) {
+            return
+        }
+
+        if (permintaanNis === controller) {
+            statusNis.value = 'gagal'
+        }
+    } finally {
+        if (permintaanNis === controller) {
+            permintaanNis = null
+        }
+    }
+}
+
+// Validasi realtime saat NIS/NIM berubah
+watch(
+    () => form.nis_nim,
+    (nilai) => {
+        clearTimeout(timerNis)
+
+        if (permintaanNis) {
+            permintaanNis.abort()
+            permintaanNis = null
+        }
+
+        if (!nilai || nilai.trim() === '') {
+            statusNis.value = ''
+            return
+        }
+
+        // Jika nilainya sama dengan NIS/NIM awal, tidak perlu diperiksa ulang
+        if (nilai.trim() === String(props.member.nis_nim).trim()) {
+            statusNis.value = ''
+            return
+        }
+
+        statusNis.value = ''
+
+        timerNis = setTimeout(() => {
+            periksaNis()
+        }, 500)
+    }
+)
+
+// Membersihkan timer dan pratinjau ketika meninggalkan halaman
+onBeforeUnmount(() => {
+    clearTimeout(timerNis)
+
+    if (permintaanNis) {
+        permintaanNis.abort()
+    }
+
+    if (alamatPratinjau) {
+        URL.revokeObjectURL(alamatPratinjau)
+    }
+})
+
+// Menyimpan perubahan data anggota
 function submit() {
     form.post(route('members.update', props.member.id), {
         forceFormData: true,
-    });
+        onSuccess: () => {
+            if (alamatPratinjau) {
+                URL.revokeObjectURL(alamatPratinjau)
+                alamatPratinjau = null
+            }
+
+            pratinjau.value = null
+        },
+    })
 }
 </script>
 
 <template>
     <AuthenticatedLayout>
-        <div class="mx-auto max-w-3xl p-6">
-            <div class="mb-6">
-                <h1 class="text-2xl font-bold text-gray-800">
-                    Edit Anggota
-                </h1>
+        <div class="p-4">
+            <h1 class="text-xl font-bold">Edit Anggota</h1>
+            <p class="mt-1 text-gray-600">
+                Perbarui informasi anggota di bawah ini.
+            </p>
 
-                <p class="mt-1 text-sm text-gray-500">
-                    Perbarui informasi anggota perpustakaan.
-                </p>
-            </div>
+            <form
+                @submit.prevent="submit"
+                class="mt-5 max-w-xl space-y-4"
+            >
+                <!-- Nama -->
+                <div>
+                    <label class="mb-1 block font-medium">
+                        Nama
+                    </label>
 
-            <div class="rounded-xl bg-white p-6 shadow">
-                <form @submit.prevent="submit" class="space-y-5">
-                    <!-- Nama -->
-                    <div>
-                        <label class="mb-1 block font-medium text-gray-700">
-                            Nama Lengkap
-                        </label>
+                    <input
+                        v-model="form.nama"
+                        type="text"
+                        placeholder="Masukkan nama anggota"
+                        class="w-full rounded border px-3 py-2"
+                        required
+                    >
 
-                        <input
-                            v-model="form.nama"
-                            type="text"
-                            class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-                            required
-                        >
+                    <div
+                        v-if="form.errors.nama"
+                        class="mt-1 text-sm text-red-600"
+                    >
+                        {{ form.errors.nama }}
+                    </div>
+                </div>
 
-                        <p v-if="form.errors.nama" class="mt-1 text-sm text-red-600">
-                            {{ form.errors.nama }}
-                        </p>
+                <!-- NIS/NIM -->
+                <div>
+                    <label class="mb-1 block font-medium">
+                        NIS/NIM
+                    </label>
+
+                    <input
+                        v-model="form.nis_nim"
+                        type="text"
+                        placeholder="Masukkan NIS/NIM"
+                        class="w-full rounded border px-3 py-2"
+                        required
+                    >
+
+                    <div
+                        v-if="statusNis === 'memeriksa'"
+                        class="mt-1 text-sm text-gray-500"
+                    >
+                        Memeriksa NIS/NIM...
                     </div>
 
-                    <!-- NIS/NIM -->
-                    <div>
-                        <label class="mb-1 block font-medium text-gray-700">
-                            NIS/NIM
-                        </label>
-
-                        <input
-                            v-model="form.nis_nim"
-                            type="text"
-                            class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-                            required
-                        >
-
-                        <p v-if="form.errors.nis_nim" class="mt-1 text-sm text-red-600">
-                            {{ form.errors.nis_nim }}
-                        </p>
+                    <div
+                        v-else-if="statusNis === 'tersedia'"
+                        class="mt-1 text-sm text-green-700"
+                    >
+                        NIS/NIM ini tersedia.
                     </div>
 
-                    <!-- Nomor HP -->
-                    <div>
-                        <label class="mb-1 block font-medium text-gray-700">
-                            Nomor HP
-                        </label>
-
-                        <input
-                            v-model="form.no_hp"
-                            type="text"
-                            class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-                        >
-
-                        <p v-if="form.errors.no_hp" class="mt-1 text-sm text-red-600">
-                            {{ form.errors.no_hp }}
-                        </p>
+                    <div
+                        v-else-if="statusNis === 'terpakai'"
+                        class="mt-1 text-sm text-red-600"
+                    >
+                        NIS/NIM sudah digunakan anggota lain.
                     </div>
 
-                    <!-- Foto saat ini -->
-                    <div>
-                        <label class="mb-2 block font-medium text-gray-700">
-                            Foto Saat Ini
-                        </label>
+                    <div
+                        v-else-if="statusNis === 'gagal'"
+                        class="mt-1 text-sm text-yellow-700"
+                    >
+                        Pemeriksaan otomatis gagal. Server akan
+                        memeriksa kembali saat data disimpan.
+                    </div>
+
+                    <div
+                        v-if="form.errors.nis_nim"
+                        class="mt-1 text-sm text-red-600"
+                    >
+                        {{ form.errors.nis_nim }}
+                    </div>
+                </div>
+
+                <!-- Nomor HP -->
+                <div>
+                    <label class="mb-1 block font-medium">
+                        No. HP
+                    </label>
+
+                    <input
+                        v-model="form.no_hp"
+                        type="tel"
+                        placeholder="Masukkan nomor HP"
+                        class="w-full rounded border px-3 py-2"
+                    >
+
+                    <div
+                        v-if="form.errors.no_hp"
+                        class="mt-1 text-sm text-red-600"
+                    >
+                        {{ form.errors.no_hp }}
+                    </div>
+                </div>
+
+                <!-- Foto lama -->
+                <div>
+                    <label class="mb-2 block font-medium">
+                        Foto Saat Ini
+                    </label>
+
+                    <img
+                        v-if="member.foto"
+                        :src="`/storage/${member.foto}`"
+                        alt="Foto anggota saat ini"
+                        class="h-32 w-32 rounded border object-cover"
+                    >
+
+                    <p v-else class="text-sm text-gray-500">
+                        Anggota belum memiliki foto.
+                    </p>
+                </div>
+
+                <!-- Foto baru -->
+                <div>
+                    <label class="mb-1 block font-medium">
+                        Ganti Foto
+                    </label>
+
+                    <p class="mb-2 text-sm text-gray-500">
+                        Kosongkan jika tidak ingin mengganti foto.
+                        Format JPG/PNG, maksimal 1 MB.
+                    </p>
+
+                    <input
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        class="block w-full rounded border p-2"
+                        @change="pilihFoto"
+                    >
+
+                    <div
+                        v-if="form.errors.foto"
+                        class="mt-1 text-sm text-red-600"
+                    >
+                        {{ form.errors.foto }}
+                    </div>
+
+                    <div v-if="pratinjau" class="mt-3">
+                        <p class="mb-2 text-sm text-gray-600">
+                            Pratinjau foto baru:
+                        </p>
 
                         <img
-                            v-if="member.foto"
-                            :src="`/storage/${member.foto}`"
-                            alt="Foto anggota saat ini"
-                            class="h-32 w-32 rounded-lg border object-cover"
+                            :src="pratinjau"
+                            alt="Pratinjau foto baru"
+                            class="h-32 w-32 rounded border object-cover"
                         >
-
-                        <p v-else class="text-sm text-gray-500">
-                            Belum ada foto.
-                        </p>
                     </div>
+                </div>
 
-                    <!-- Foto baru -->
-                    <div>
-                        <label class="mb-2 block font-medium text-gray-700">
-                            Ganti Foto
-                        </label>
+                <!-- Tombol -->
+                <div class="flex gap-3 pt-2">
+                    <button
+                        type="submit"
+                        :disabled="
+                            form.processing ||
+                            statusNis === 'terpakai' ||
+                            statusNis === 'memeriksa'
+                        "
+                        class="rounded bg-blue-600 px-5 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {{
+                            form.processing
+                                ? 'Menyimpan...'
+                                : 'Simpan Perubahan'
+                        }}
+                    </button>
 
-                        <input
-                            type="file"
-                            accept="image/jpeg,image/png,image/jpg"
-                            @change="pilihFoto"
-                            class="block w-full text-sm text-gray-600"
-                        >
-
-                        <p class="mt-1 text-xs text-gray-500">
-                            Format JPG, JPEG, atau PNG. Maksimal 2 MB.
-                            Kosongkan jika tidak ingin mengganti foto.
-                        </p>
-
-                        <p v-if="form.errors.foto" class="mt-1 text-sm text-red-600">
-                            {{ form.errors.foto }}
-                        </p>
-
-                        <div v-if="pratinjau" class="mt-3">
-                            <p class="mb-2 text-sm font-medium text-gray-700">
-                                Pratinjau Foto Baru
-                            </p>
-
-                            <img
-                                :src="pratinjau"
-                                alt="Pratinjau foto baru"
-                                class="h-32 w-32 rounded-lg border object-cover"
-                            >
-                        </div>
-                    </div>
-
-                    <!-- Tombol -->
-                    <div class="flex gap-3 border-t pt-5">
-                        <button
-                            type="submit"
-                            :disabled="form.processing"
-                            class="rounded-lg bg-indigo-600 px-5 py-2.5 font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                        >
-                            {{ form.processing ? 'Menyimpan...' : 'Simpan Perubahan' }}
-                        </button>
-
-                        <Link
-                            :href="route('members.index')"
-                            class="rounded-lg border border-gray-300 px-5 py-2.5 text-gray-700 hover:bg-gray-50"
-                        >
-                            Batal
-                        </Link>
-                    </div>
-                </form>
-            </div>
+                    <a
+                        :href="route('members.index')"
+                        class="rounded border px-5 py-2 text-gray-700 hover:bg-gray-100"
+                    >
+                        Kembali
+                    </a>
+                </div>
+            </form>
         </div>
     </AuthenticatedLayout>
 </template>

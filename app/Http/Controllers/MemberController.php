@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Storage;
 
 class MemberController extends Controller
 {
-    // Menampilkan daftar anggota dan melakukan pencarian
+    /**
+     * Menampilkan daftar anggota dan fitur pencarian.
+     */
     public function index(Request $request)
     {
         $members = Member::when($request->search, function ($query, $search) {
@@ -28,13 +30,65 @@ class MemberController extends Controller
         ]);
     }
 
-    // Menampilkan halaman tambah anggota
+    /**
+     * Endpoint JSON untuk live search anggota.
+     */
+    public function search(Request $request)
+    {
+        $kataKunci = $request->query('q', '');
+
+        $members = Member::where(function ($query) use ($kataKunci) {
+            $query->where('nama', 'like', "%{$kataKunci}%")
+                ->orWhere('nis_nim', 'like', "%{$kataKunci}%")
+                ->orWhere('no_hp', 'like', "%{$kataKunci}%");
+        })
+            ->latest()
+            ->limit(10)
+            ->get([
+                'id',
+                'nama',
+                'nis_nim',
+                'no_hp',
+                'foto',
+            ]);
+
+        return response()->json($members);
+    }
+
+    /**
+     * Validasi realtime untuk memeriksa ketersediaan NIS/NIM.
+     */
+    public function cekNis(Request $request)
+    {
+        $nisNim = $request->query('nis_nim', '');
+        $abaikanId = $request->query('abaikan');
+
+        $sudahDipakai = false;
+
+        if ($nisNim !== '') {
+            $sudahDipakai = Member::where('nis_nim', $nisNim)
+                ->when($abaikanId, function ($query, $id) {
+                    $query->where('id', '!=', $id);
+                })
+                ->exists();
+        }
+
+        return response()->json([
+            'tersedia' => ! $sudahDipakai,
+        ]);
+    }
+
+    /**
+     * Menampilkan halaman tambah anggota.
+     */
     public function create()
     {
         return inertia('Members/Create');
     }
 
-    // Menyimpan anggota baru
+    /**
+     * Menyimpan anggota baru.
+     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -44,7 +98,6 @@ class MemberController extends Controller
             'foto' => 'nullable|image|mimes:jpg,jpeg,png|max:1024',
         ]);
 
-        // Menyimpan foto ke storage/app/public/members
         if ($request->hasFile('foto')) {
             $validated['foto'] = $request->file('foto')
                 ->store('members', 'public');
@@ -57,7 +110,9 @@ class MemberController extends Controller
             ->with('success', 'Anggota berhasil ditambahkan.');
     }
 
-    // Menampilkan detail anggota
+    /**
+     * Menampilkan detail anggota.
+     */
     public function show(Member $member)
     {
         return inertia('Members/Show', [
@@ -65,7 +120,9 @@ class MemberController extends Controller
         ]);
     }
 
-    // Menampilkan halaman edit anggota
+    /**
+     * Menampilkan halaman edit anggota.
+     */
     public function edit(Member $member)
     {
         return inertia('Members/Edit', [
@@ -73,7 +130,9 @@ class MemberController extends Controller
         ]);
     }
 
-    // Memperbarui data anggota
+    /**
+     * Memperbarui data anggota.
+     */
     public function update(Request $request, Member $member)
     {
         $validated = $request->validate([
@@ -84,16 +143,13 @@ class MemberController extends Controller
         ]);
 
         if ($request->hasFile('foto')) {
-            // Hapus foto lama jika ada
             if ($member->foto) {
                 Storage::disk('public')->delete($member->foto);
             }
 
-            // Simpan foto baru
             $validated['foto'] = $request->file('foto')
                 ->store('members', 'public');
         } else {
-            // Pertahankan foto lama jika tidak ada foto baru
             unset($validated['foto']);
         }
 
@@ -104,10 +160,11 @@ class MemberController extends Controller
             ->with('success', 'Anggota berhasil diperbarui.');
     }
 
-    // Menghapus anggota
+    /**
+     * Menghapus anggota.
+     */
     public function destroy(Member $member)
     {
-        // Hapus foto anggota dari penyimpanan
         if ($member->foto) {
             Storage::disk('public')->delete($member->foto);
         }

@@ -4,7 +4,6 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\BookController;
 use App\Http\Controllers\MemberController;
-use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -34,9 +33,30 @@ Route::middleware('auth')->group(function () {
         ->name('profile.destroy');
 });
 
-// CRUD Buku: hanya bisa diakses setelah login
+// CRUD Buku dan Anggota: hanya bisa diakses setelah login
 Route::middleware('auth')->group(function () {
+
+    // Route pencarian buku (JSON)
+    // Harus ditulis sebelum Route::resource
+    Route::get('/books/search', [BookController::class, 'search'])
+        ->name('books.search');
+
+    // Route validasi kode buku realtime
+    Route::get('/books/cek-kode', [BookController::class, 'cekKode'])
+        ->name('books.cek-kode');
+
+    // Route pencarian anggota (JSON)
+    Route::get('/members/search', [MemberController::class, 'search'])
+        ->name('members.search');
+
+    // Route validasi NIS/NIM realtime
+    Route::get('/members/cek-nis', [MemberController::class, 'cekNis'])
+        ->name('members.cek-nis');
+
+    // CRUD Buku
     Route::resource('books', BookController::class);
+
+    // CRUD Anggota
     Route::resource('members', MemberController::class);
 });
 

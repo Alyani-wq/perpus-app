@@ -8,22 +8,73 @@ use Illuminate\Http\Request;
 class BookController extends Controller
 {
     /**
-     * Menampilkan seluruh data buku dan fitur pencarian.
+     * Menampilkan daftar buku dan pencarian.
      */
     public function index(Request $request)
     {
         $books = Book::when($request->search, function ($query, $search) {
-            $query->where('judul', 'like', "%{$search}%")
-                  ->orWhere('pengarang', 'like', "%{$search}%")
-                  ->orWhere('kode_buku', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q->where('judul', 'like', "%{$search}%")
+                    ->orWhere('pengarang', 'like', "%{$search}%")
+                    ->orWhere('kode_buku', 'like', "%{$search}%")
+                    ->orWhere('penerbit', 'like', "%{$search}%");
+            });
         })
-        ->latest()
-        ->paginate(10)
-        ->withQueryString();
+            ->latest()
+            ->paginate(10)
+            ->withQueryString();
 
         return inertia('Books/Index', [
             'books' => $books,
             'search' => $request->search,
+        ]);
+    }
+
+    /**
+     * Endpoint JSON untuk live search buku.
+     */
+    public function search(Request $request)
+    {
+        $kataKunci = $request->query('q', '');
+
+        $books = Book::where(function ($query) use ($kataKunci) {
+            $query->where('judul', 'like', "%{$kataKunci}%")
+                ->orWhere('pengarang', 'like', "%{$kataKunci}%")
+                ->orWhere('kode_buku', 'like', "%{$kataKunci}%")
+                ->orWhere('penerbit', 'like', "%{$kataKunci}%");
+        })
+            ->latest()
+            ->limit(10)
+            ->get([
+                'id',
+                'kode_buku',
+                'judul',
+                'pengarang',
+                'penerbit',
+                'stok',
+            ]);
+
+        return response()->json($books);
+    }
+
+    /**
+     * Endpoint JSON untuk memeriksa ketersediaan kode buku.
+     */
+    public function cekKode(Request $request)
+    {
+        $kodeBuku = trim($request->query('kode_buku', ''));
+
+        // Kode kosong belum dianggap duplikat.
+        if ($kodeBuku === '') {
+            return response()->json([
+                'tersedia' => true,
+            ]);
+        }
+
+        $sudahDipakai = Book::where('kode_buku', $kodeBuku)->exists();
+
+        return response()->json([
+            'tersedia' => ! $sudahDipakai,
         ]);
     }
 
@@ -36,11 +87,12 @@ class BookController extends Controller
     }
 
     /**
-     * Menyimpan data buku baru.
+     * Menyimpan buku baru.
      */
     public function store(Request $request)
     {
         $validated = $request->validate([
+            // Validasi unique tetap dipertahankan.
             'kode_buku' => 'required|unique:books,kode_buku',
             'judul' => 'required|max:255',
             'pengarang' => 'required|max:255',
@@ -51,7 +103,8 @@ class BookController extends Controller
 
         Book::create($validated);
 
-        return redirect()->route('books.index')
+        return redirect()
+            ->route('books.index')
             ->with('success', 'Buku berhasil ditambahkan.');
     }
 
@@ -97,7 +150,8 @@ class BookController extends Controller
 
         $book->update($validated);
 
-        return redirect()->route('books.index')
+        return redirect()
+            ->route('books.index')
             ->with('success', 'Buku berhasil diperbarui.');
     }
 
@@ -107,10 +161,10 @@ class BookController extends Controller
     public function destroy(string $id)
     {
         $book = Book::findOrFail($id);
-
         $book->delete();
 
-        return redirect()->route('books.index')
+        return redirect()
+            ->route('books.index')
             ->with('success', 'Buku berhasil dihapus.');
     }
 }
