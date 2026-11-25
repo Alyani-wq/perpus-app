@@ -1,4 +1,3 @@
-
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { useForm, Link } from '@inertiajs/vue3';
